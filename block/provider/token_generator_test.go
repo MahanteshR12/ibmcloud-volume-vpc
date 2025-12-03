@@ -18,13 +18,22 @@
 package provider
 
 import (
-	"github.com/stretchr/testify/assert"
-
+	"crypto/rand"
+	"crypto/rsa"
 	"testing"
 
 	"github.com/IBM/ibmcloud-volume-interface/lib/provider"
 	"github.com/IBM/ibmcloud-volume-interface/provider/auth"
+	"github.com/stretchr/testify/assert"
 )
+
+func generateTestPrivateKey(t *testing.T) *rsa.PrivateKey {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate test RSA key: %v", err)
+	}
+	return key
+}
 
 func TestTokenGenerator(t *testing.T) {
 	logger, teardown := GetTestLogger(t)
@@ -33,55 +42,106 @@ func TestTokenGenerator(t *testing.T) {
 	tg := tokenGenerator{}
 	assert.NotNil(t, tg)
 
-	cf := provider.ContextCredentials{
-		AuthType:     provider.IAMAccessToken,
-		Credential:   TestProviderAccessToken,
-		IAMAccountID: TestIKSAccountID,
+	testPrivKey := generateTestPrivateKey(t)
+
+	tests := []struct {
+		name        string
+		tokenKID    string
+		creds       provider.ContextCredentials
+		setup       func()
+		err         bool
+		wantNilSign bool
+	}{
+		{
+			name:     "missing tokenKID should error",
+			tokenKID: "",
+			creds: provider.ContextCredentials{
+				AuthType:     provider.IAMAccessToken,
+				Credential:   TestProviderAccessToken,
+				IAMAccountID: TestIKSAccountID,
+			},
+			setup:       func() { tg.privateKey = nil },
+			err:         true,
+			wantNilSign: true,
+		},
+		{
+			name:     "invalid tokenKID 'sample_key' should throw error",
+			tokenKID: "sample_key",
+			creds: provider.ContextCredentials{
+				AuthType:     provider.IAMAccessToken,
+				Credential:   TestProviderAccessToken,
+				IAMAccountID: TestIKSAccountID,
+			},
+			setup:       func() { tg.privateKey = nil },
+			err:         true,
+			wantNilSign: true,
+		},
+		{
+			name:     "valid IAMAccessToken with UserID should pass",
+			tokenKID: "no_sample_key",
+			creds: provider.ContextCredentials{
+				AuthType:     provider.IAMAccessToken,
+				Credential:   TestProviderAccessToken,
+				IAMAccountID: TestIKSAccountID,
+				UserID:       TestIKSAccountID,
+			},
+			setup: func() {
+				tg.privateKey = testPrivKey
+			},
+			err:         false,
+			wantNilSign: false,
+		},
+		{
+			name:     "IMSToken should pass",
+			tokenKID: "no_sample_key",
+			creds: provider.ContextCredentials{
+				AuthType:     auth.IMSToken,
+				Credential:   TestProviderAccessToken,
+				IAMAccountID: TestIKSAccountID,
+				UserID:       TestIKSAccountID,
+			},
+			setup: func() {
+				tg.privateKey = testPrivKey
+			},
+			err:         false,
+			wantNilSign: false,
+		},
+		{
+			name:     "IMSToken with invalid tokenKID still passes",
+			tokenKID: "sample_key_invalid",
+			creds: provider.ContextCredentials{
+				AuthType:     auth.IMSToken,
+				Credential:   TestProviderAccessToken,
+				IAMAccountID: TestIKSAccountID,
+				UserID:       TestIKSAccountID,
+			},
+			setup: func() {
+				tg.privateKey = testPrivKey
+			},
+			err:         false,
+			wantNilSign: false,
+		},
 	}
-	signedToken, err := tg.getServiceToken(cf, *logger)
-	assert.Nil(t, signedToken)
-	assert.NotNil(t, err)
 
-	tg.tokenKID = "sample_key"
-	signedToken, err = tg.getServiceToken(cf, *logger)
-	assert.Nil(t, signedToken)
-	assert.NotNil(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tg.tokenKID = tt.tokenKID
 
-	cf = provider.ContextCredentials{
-		AuthType:     provider.IAMAccessToken,
-		Credential:   TestProviderAccessToken,
-		IAMAccountID: TestIKSAccountID,
-		UserID:       TestIKSAccountID,
+			tt.setup()
+
+			signedToken, err := tg.getServiceToken(tt.creds, *logger)
+
+			if tt.err {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+			}
+
+			if tt.wantNilSign {
+				assert.Nil(t, signedToken)
+			} else {
+				assert.NotNil(t, signedToken)
+			}
+		})
 	}
-
-	tg.tokenKID = "no_sample_key"
-	signedToken, err = tg.getServiceToken(cf, *logger)
-	assert.NotNil(t, signedToken)
-	assert.Nil(t, err)
-
-	signedToken, err = tg.getServiceToken(cf, *logger)
-	assert.NotNil(t, signedToken)
-	assert.Nil(t, err)
-
-	tg.tokenKID = "no_sample_key"
-	cf = provider.ContextCredentials{
-		AuthType:     auth.IMSToken,
-		Credential:   TestProviderAccessToken,
-		IAMAccountID: TestIKSAccountID,
-		UserID:       TestIKSAccountID,
-	}
-	signedToken, err = tg.getServiceToken(cf, *logger)
-	assert.NotNil(t, signedToken)
-	assert.Nil(t, err)
-
-	tg.tokenKID = "sample_key_invalid"
-	cf = provider.ContextCredentials{
-		AuthType:     auth.IMSToken,
-		Credential:   TestProviderAccessToken,
-		IAMAccountID: TestIKSAccountID,
-		UserID:       TestIKSAccountID,
-	}
-	signedToken, err = tg.getServiceToken(cf, *logger)
-	assert.NotNil(t, signedToken)
-	assert.Nil(t, err)
 }

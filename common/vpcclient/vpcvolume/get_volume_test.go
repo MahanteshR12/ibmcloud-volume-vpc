@@ -159,8 +159,8 @@ func TestGetVolumeByName(t *testing.T) {
 				}
 			},
 		}, {
-			name:      "Verify that the volume is empty if the volumes are empty",
-			status:    http.StatusOK,
+			name:    "Verify that the volume is empty if the volumes are empty",
+			status:  http.StatusOK,
 			content: "{\"volumes\":[{\"id\":\"vol2\",\"name\":\"vol2\",\"size\":10,\"iops\":3000,\"status\":\"pending\",\"zone\":{\"name\":\"test-1\",\"href\":\"https://us-south.iaas.cloud.ibm.com/v1/regions/us-south/zones/test-1\"},\"crn\":\"crn:v1:bluemix:public:is:test-1:a/rg1::volume:vol2\"}]}",
 		},
 	}
