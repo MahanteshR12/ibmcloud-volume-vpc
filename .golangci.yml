@@ -1,3 +1,5 @@
+version: "2"
+
 # all available settings of specific linters
 linters-settings:
   govet:
@@ -12,35 +14,30 @@ linters-settings:
   gosec:
     settings:
       exclude: "G401"
-  golint:
-    min-confidence: 0
-    report-comments: true
   gocyclo:
     min-complexity: 10
-  maligned:
-    suggest-new: true
   dupl:
     threshold: 100
   goconst:
     min-len: 2
     min-occurrences: 2
+
 issues:
-  include: [EXC01, EXC02]
-  exclude-use-default: false
+  include:
+    - EXC01
+    - EXC02
+
 linters:
-    # enable or disable analyzers by name
-    enable:
-      - gofmt
-      - gosec
-      - whitespace
-      - misspell
-      - unconvert
-      - goimports
-      - unused
-      - gosimple
-      - govet
-      - typecheck
-      - staticcheck
-    enable-all: false
-    disable-all: true
-    
+  # enable or disable analyzers by name
+  enable:
+    - gofmt
+    - gosec
+    - whitespace
+    - misspell
+    - unconvert
+    - goimports
+    - unused
+    - gosimple
+    - govet
+    - staticcheck
+  disable-all: true

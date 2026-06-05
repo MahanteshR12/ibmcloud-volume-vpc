@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -63,7 +63,7 @@ func SetupMuxResponse(t *testing.T, m *http.ServeMux, path string, expectedMetho
 		assert.Equal(t, "application/json", acceptHeader)
 
 		if expectedContent != nil {
-			b, _ := ioutil.ReadAll(r.Body)
+			b, _ := io.ReadAll(r.Body)
 			assert.Equal(t, *expectedContent, string(b))
 		}
 
