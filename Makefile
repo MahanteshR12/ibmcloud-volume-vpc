@@ -30,11 +30,11 @@ deps:
 
 .PHONY: fmt
 fmt:
-	$(LINT_BIN) run --disable-all --enable=gofmt
+	$(LINT_BIN) run --enable=gofmt --timeout=10m
 
 .PHONY: dofmt
 dofmt:
-	$(LINT_BIN) run --disable-all --enable=gofmt --fix
+	$(LINT_BIN) run --enable=gofmt --fix --timeout=10m
 
 .PHONY: lint
 lint:
