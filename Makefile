@@ -2,10 +2,11 @@
 GOPACKAGES=$(shell go list ./... | grep -v /vendor/ | grep -v /samples)
 GOFILES=$(shell find . -type f -name '*.go' -not -path "./vendor/*")
 ARCH = $(shell uname -m)
-LINT_VERSION="1.60.1"
+LINT_VERSION="1.62.2"
 
 GOPATH := $(shell go env GOPATH)
-LINT_BIN=$(GOPATH)/bin/golangci-lint
+# Use system golangci-lint if available, otherwise use GOPATH version
+LINT_BIN=$(shell which golangci-lint 2>/dev/null || echo $(GOPATH)/bin/golangci-lint)
 
 .PHONY: all
 all: deps fmt vet test
@@ -20,10 +21,11 @@ deps:
 		go install github.com/pierrre/gotestcover@latest; \
 	fi
 
-	@if ! command -v $(LINT_BIN) >/dev/null || ! golangci-lint --version 2>/dev/null | grep -q "$(LINT_VERSION)"; then \
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "Installing golangci-lint $(LINT_VERSION) ..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-			| sh -s -- -b $(shell go env GOBIN 2>/dev/null || echo $$(go env GOPATH)/bin) v$(LINT_VERSION); \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v$(LINT_VERSION); \
+	else \
+		echo "golangci-lint already installed at $$(which golangci-lint)"; \
 	fi
 
 .PHONY: fmt
@@ -38,8 +40,8 @@ dofmt:
 lint:
 	$(LINT_BIN) run
 
-.PHONY: fmt
-fmt:
+.PHONY: gofmt
+gofmt:
 	gofmt -l -w ${GOFILES}
 
 .PHONY: build
