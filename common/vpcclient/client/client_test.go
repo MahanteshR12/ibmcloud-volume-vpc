@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -105,7 +105,7 @@ func TestClient(t *testing.T) {
 				if assert.NoError(t, err) {
 					assert.Equal(t, "image", header.Filename)
 
-					bytes, err := ioutil.ReadAll(file)
+					bytes, err := io.ReadAll(file)
 					assert.NoError(t, err)
 
 					assert.Equal(t, "file-contents", string(bytes))
