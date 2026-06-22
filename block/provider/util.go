@@ -81,6 +81,8 @@ var skipErrorCodes = map[string]bool{
 	"volume_profile_capacity_maxbandwidth_invalid": true,
 	"validation_failed_pattern":                    true,
 	"volume_tags_update_failed":                    true,
+	"snapshots_service_unavailable":                true,
+	"snapshots_source_volume_busy":                 true,
 
 	// IKS ms error code for skip re-try
 	"ST0008": true, //resources not found
