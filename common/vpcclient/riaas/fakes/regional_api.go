@@ -31,6 +31,16 @@ type RegionalAPI struct {
 	loginReturnsOnCall map[int]struct {
 		result1 error
 	}
+	SnapshotConsistencyGroupServiceStub        func() vpcvolume.SnapshotConsistencyGroupManager
+	snapshotConsistencyGroupServiceMutex       sync.RWMutex
+	snapshotConsistencyGroupServiceArgsForCall []struct {
+	}
+	snapshotConsistencyGroupServiceReturns struct {
+		result1 vpcvolume.SnapshotConsistencyGroupManager
+	}
+	snapshotConsistencyGroupServiceReturnsOnCall map[int]struct {
+		result1 vpcvolume.SnapshotConsistencyGroupManager
+	}
 	SnapshotServiceStub        func() vpcvolume.SnapshotManager
 	snapshotServiceMutex       sync.RWMutex
 	snapshotServiceArgsForCall []struct {
