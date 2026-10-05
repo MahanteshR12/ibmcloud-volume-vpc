@@ -66,6 +66,7 @@ var skipErrorCodes = map[string]bool{
 	"not_found":                                    true,
 	"volume_id_not_found":                          true,
 	"volume_name_not_found":                        true,
+	"volume_not_deletable":                         true,
 	"volume_profile_capacity_iops_invalid":         true,
 	"internal_error":                               false,
 	"invalid_route":                                false,
@@ -83,6 +84,7 @@ var skipErrorCodes = map[string]bool{
 	"validation_failed_pattern":                    true,
 	"volume_tags_update_failed":                    true,
 	"snapshots_service_unavailable":                true,
+	"snapshots_too_many_requests":                  true,
 	"snapshots_source_volume_busy":                 true,
 
 	// IKS ms error code for skip re-try
