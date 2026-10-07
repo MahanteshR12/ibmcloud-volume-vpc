@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// GetSnapshotConsistencyGroup GETs /snapshot_consistency_groups/{id}
+// GetSnapshotConsistencyGroup returns group details and references to its member snapshots.
 func (scg *SnapshotConsistencyGroupService) GetSnapshotConsistencyGroup(groupID string, ctxLogger *zap.Logger) (*models.SnapshotConsistencyGroup, error) {
 	ctxLogger.Debug("Entry Backend GetSnapshotConsistencyGroup")
 	defer ctxLogger.Debug("Exit Backend GetSnapshotConsistencyGroup")

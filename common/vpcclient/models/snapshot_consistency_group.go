@@ -18,6 +18,7 @@ package models
 
 import "time"
 
+// SnapshotConsistencyGroup is the response received from the VPC
 type SnapshotConsistencyGroup struct {
 	Href                    string                     `json:"href,omitempty"`
 	ID                      string                     `json:"id,omitempty"`
