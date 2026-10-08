@@ -17,10 +17,12 @@
 package provider
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/IBM/ibmcloud-volume-interface/lib/provider"
+	providerError "github.com/IBM/ibmcloud-volume-interface/lib/utils"
 	"github.com/IBM/ibmcloud-volume-vpc/common/vpcclient/models"
 	serviceFakes "github.com/IBM/ibmcloud-volume-vpc/common/vpcclient/vpcvolume/fakes"
 	"github.com/stretchr/testify/assert"
@@ -202,6 +204,153 @@ func TestGetGroupSnapshotGetsConsistencyGroupAndListsMembers(t *testing.T) {
 	assert.Equal(t, "volume-id-1", groupSnapshot.Snapshots[0].VolumeID)
 	_, _, filters, _ := snapshotService.ListSnapshotsArgsForCall(0)
 	assert.Equal(t, "group-snapshot-id", filters.SnapshotConsistencyGroupID)
+}
+
+func TestGroupSnapshotMemberLookup(t *testing.T) {
+	operations := []struct {
+		name string
+		call func(*VPCSession) (*provider.GroupSnapshot, error)
+	}{
+		{
+			name: "create",
+			call: func(session *VPCSession) (*provider.GroupSnapshot, error) {
+				return session.CreateGroupSnapshot([]string{"volume-id-1", "volume-id-2"}, provider.GroupSnapshotParameters{
+					Name: "group-snapshot-name", ResourceGroup: "resource-group-id",
+				})
+			},
+		},
+		{
+			name: "get by ID",
+			call: func(session *VPCSession) (*provider.GroupSnapshot, error) {
+				return session.GetGroupSnapshot("group-snapshot-id")
+			},
+		},
+		{
+			name: "get by name",
+			call: func(session *VPCSession) (*provider.GroupSnapshot, error) {
+				return session.GetGroupSnapshotByName("group-snapshot-name", "resource-group-id")
+			},
+		},
+	}
+	fullMemberDetails := &models.SnapshotList{Snapshots: []*models.Snapshot{
+		{ID: "snapshot-id-1", CRN: "snapshot-crn-1", LifecycleState: snapshotReadyState, SourceVolume: &models.SourceVolume{ID: "volume-id-1"}},
+		{ID: "snapshot-id-2", CRN: "snapshot-crn-2", LifecycleState: snapshotReadyState, SourceVolume: &models.SourceVolume{ID: "volume-id-2"}},
+	}}
+	memberLookups := []struct {
+		name      string
+		result    *models.SnapshotList
+		err       error
+		wantReady bool
+	}{
+		{
+			name:      "full details",
+			result:    fullMemberDetails,
+			wantReady: true,
+		},
+		{
+			name: "service unavailable",
+			err: &models.Error{Trace: "member-lookup-trace", Errors: []models.ErrorItem{
+				{Code: models.ErrorCode("snapshots_service_unavailable"), Status: "503 Service Unavailable"},
+			}},
+		},
+		{
+			name: "permission denied",
+			err: &models.Error{Trace: "member-lookup-trace", Errors: []models.ErrorItem{
+				{Code: models.ErrorCode("snapshots_not_authorized"), Status: "403 Forbidden"},
+			}},
+		},
+		{
+			name: "authentication failed",
+			err: &models.Error{Trace: "member-lookup-trace", Errors: []models.ErrorItem{
+				{Code: models.ErrorCodeTokenInvalid, Status: "401 Unauthorized"},
+			}},
+		},
+		{
+			name: "rate limited",
+			err: &models.Error{Trace: "member-lookup-trace", Errors: []models.ErrorItem{
+				{Code: models.ErrorCode("snapshots_too_many_requests"), Status: "429 Too Many Requests"},
+			}},
+		},
+		{
+			name: "internal backend error",
+			err: &models.Error{Trace: "member-lookup-trace", Errors: []models.ErrorItem{
+				{Code: models.ErrorCode("internal_error"), Status: "500 Internal Server Error"},
+			}},
+		},
+		{name: "transport error", err: errors.New("snapshot endpoint connection reset")},
+		{name: "no details returned"},
+		{name: "empty details returned", result: &models.SnapshotList{}},
+		{name: "partial details returned", result: &models.SnapshotList{Snapshots: fullMemberDetails.Snapshots[:1]}},
+	}
+
+	for _, operation := range operations {
+		for _, lookup := range memberLookups {
+			t.Run(operation.name+"/"+lookup.name, func(t *testing.T) {
+				logger, teardown := GetTestLogger(t)
+				defer teardown()
+				session, client, _, err := GetTestOpenSession(t, logger)
+				require.NoError(t, err)
+
+				group := &models.SnapshotConsistencyGroup{
+					ID: "group-snapshot-id", LifecycleState: snapshotReadyState,
+					Snapshots: []models.SnapshotReference{
+						{ID: "snapshot-id-1", CRN: "snapshot-crn-1"},
+						{ID: "snapshot-id-2", CRN: "snapshot-crn-2"},
+					},
+				}
+				client.SnapshotConsistencyGroupServiceReturns(&fakeSnapshotConsistencyGroupManager{
+					createResult: group, getResult: group, getByNameResult: group,
+				})
+				snapshotService := &serviceFakes.SnapshotManager{}
+				snapshotService.ListSnapshotsReturns(lookup.result, lookup.err)
+				client.SnapshotServiceReturns(snapshotService)
+
+				response, err := operation.call(session)
+
+				// Failures must leave this request after one member lookup, without an internal retry loop.
+				require.Equal(t, 1, snapshotService.ListSnapshotsCallCount())
+				_, _, filters, _ := snapshotService.ListSnapshotsArgsForCall(0)
+				assert.Equal(t, group.ID, filters.SnapshotConsistencyGroupID)
+				if lookup.err != nil {
+					require.Error(t, err)
+					assert.Nil(t, response)
+					var memberLookupError providerError.Message
+					require.ErrorAs(t, err, &memberLookupError)
+					assert.Equal(t, "GroupSnapshotMemberLookupFailed", memberLookupError.Code)
+					assert.Equal(t, lookup.err.Error(), memberLookupError.BackendError)
+					assert.Contains(t, memberLookupError.Description, group.ID)
+
+					// Once the backend recovers, the next request can read the same group successfully.
+					snapshotService.ListSnapshotsReturns(fullMemberDetails, nil)
+					response, err = session.GetGroupSnapshot(group.ID)
+					require.NoError(t, err)
+					require.NotNil(t, response)
+					assert.Equal(t, group.ID, response.GroupSnapshotID)
+					assert.True(t, response.ReadyToUse)
+					assert.Equal(t, 2, snapshotService.ListSnapshotsCallCount())
+					return
+				}
+
+				require.NoError(t, err)
+				require.NotNil(t, response)
+				assert.Equal(t, group.ID, response.GroupSnapshotID)
+				assert.Equal(t, lookup.wantReady, response.ReadyToUse)
+				require.Len(t, response.Snapshots, 2)
+				assert.Equal(t, "snapshot-id-1", response.Snapshots[0].SnapshotID)
+				assert.Equal(t, "snapshot-id-2", response.Snapshots[1].SnapshotID)
+				if lookup.wantReady {
+					assert.Equal(t, "volume-id-1", response.Snapshots[0].VolumeID)
+					assert.Equal(t, "volume-id-2", response.Snapshots[1].VolumeID)
+				} else if lookup.result == nil || len(lookup.result.Snapshots) == 0 {
+					assert.Empty(t, response.Snapshots[0].VolumeID)
+					assert.Empty(t, response.Snapshots[1].VolumeID)
+				} else {
+					assert.Equal(t, "volume-id-1", response.Snapshots[0].VolumeID)
+					assert.Empty(t, response.Snapshots[1].VolumeID)
+				}
+			})
+		}
+	}
 }
 
 func TestFromProviderToLibGroupSnapshotReadiness(t *testing.T) {
